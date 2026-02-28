@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">
+  <defs>
+    <linearGradient id="headerGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#2563eb;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#3b82f6;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="btnSave" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#2563eb;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#3b82f6;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background (dimmed) -->
+  <rect width="800" height="500" fill="#1e1e2e" opacity="0.9"/>
+
+  <!-- Header (visible behind dialog) -->
+  <rect x="0" y="0" width="800" height="50" fill="url(#headerGrad)"/>
+  <text x="400" y="32" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="white" text-anchor="middle">Claude Code Multi-Model Launcher</text>
+
+  <!-- Model List (visible behind dialog, dimmed) -->
+  <rect x="20" y="70" width="760" height="320" fill="#181825" rx="5" stroke="#3b82f6" stroke-width="2" opacity="0.5"/>
+
+  <!-- Dialog Box -->
+  <rect x="250" y="80" width="300" height="340" fill="#181825" rx="8" stroke="#3b82f6" stroke-width="3"/>
+
+  <!-- Dialog Title -->
+  <text x="400" y="115" font-family="Arial, sans-serif" font-size="18" font-weight="bold" fill="white" text-anchor="middle">Add Model</text>
+
+  <!-- Provider Field -->
+  <text x="270" y="155" font-family="Arial, sans-serif" font-size="12" fill="#a0a0a0">Provider:</text>
+  <rect x="270" y="165" width="260" height="30" fill="#1e1e2e" rx="3" stroke="#45475a" stroke-width="1"/>
+  <text x="280" y="186" font-family="Arial, sans-serif" font-size="13" fill="white">GLM</text>
+  <text x="510" y="186" font-family="Arial, sans-serif" font-size="13" fill="#6c7086">▼</text>
+
+  <!-- Name Field -->
+  <text x="270" y="215" font-family="Arial, sans-serif" font-size="12" fill="#a0a0a0">Name:</text>
+  <rect x="270" y="225" width="260" height="30" fill="#1e1e2e" rx="3" stroke="#45475a" stroke-width="1"/>
+  <text x="280" y="246" font-family="Arial, sans-serif" font-size="13" fill="white">GLM</text>
+  <rect x="300" y="240" width="2" height="16" fill="#3b82f6"/> <!-- cursor -->
+
+  <!-- API Key Field -->
+  <text x="270" y="275" font-family="Arial, sans-serif" font-size="12" fill="#a0a0a0">API Key:</text>
+  <rect x="270" y="285" width="260" height="30" fill="#1e1e2e" rx="3" stroke="#45475a" stroke-width="1"/>
+  <text x="280" y="306" font-family="Arial, sans-serif" font-size="13" fill="#6c7086">••••••••••••••••</text>
+
+  <!-- Base URL Field -->
+  <text x="270" y="335" font-family="Arial, sans-serif" font-size="12" fill="#a0a0a0">Base URL:</text>
+  <rect x="270" y="345" width="260" height="30" fill="#1e1e2e" rx="3" stroke="#45475a" stroke-width="1"/>
+  <text x="280" y="366" font-family="Consolas, monospace" font-size="11" fill="white">https://open.bigmodel.cn/api/anthropic</text>
+
+  <!-- Model Field -->
+  <text x="270" y="395" font-family="Arial, sans-serif" font-size="12" fill="#a0a0a0">Model:</text>
+  <rect x="270" y="405" width="260" height="30" fill="#1e1e2e" rx="3" stroke="#45475a" stroke-width="1"/>
+  <text x="280" y="426" font-family="Consolas, monospace" font-size="12" fill="white">glm-4.6</text>
+
+  <!-- Buttons -->
+  <rect x="290" y="460" width="90" height="32" fill="url(#btnSave)" rx="5"/>
+  <text x="335" y="482" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="white" text-anchor="middle">Save</text>
+
+  <rect x="400" y="460" width="90" height="32" fill="#313244" rx="5" stroke="#6c7086" stroke-width="1"/>
+  <text x="445" y="482" font-family="Arial, sans-serif" font-size="14" fill="white" text-anchor="middle">Cancel</text>
+</svg>
