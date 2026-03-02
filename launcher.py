@@ -3,10 +3,9 @@ Claude Code Multi-Model Launcher - Windows Terminal Tabs
 """
 import json
 import os
+import re
 import shutil
 import subprocess
-import urllib.request
-import urllib.error
 from pathlib import Path
 
 from textual.app import App, ComposeResult
@@ -62,27 +61,31 @@ def get_local_version():
             text=True,
             timeout=10
         )
-        if result.returncode == 0:
-            # 输出格式通常是 "claude-code x.x.x" 或直接 "x.x.x"
-            output = result.stdout.strip()
-            # 提取版本号
-            import re
-            match = re.search(r'(\d+\.\d+\.\d+)', output)
-            if match:
-                return match.group(1)
+        # 合并 stdout 和 stderr（版本信息可能在任一位置）
+        output = (result.stdout + result.stderr).strip()
+        # 输出格式: "2.1.61 (Claude Code)" 或 "claude-code/2.1.61"
+        match = re.search(r'(\d+\.\d+\.\d+)', output)
+        if match:
+            return match.group(1)
         return None
     except Exception:
         return None
 
 
 def get_latest_version():
-    """从 npm registry 获取最新版本"""
+    """从 npm 获取最新版本"""
     try:
-        url = "https://registry.npmjs.org/@anthropic-ai/claude-code/latest"
-        req = urllib.request.Request(url, headers={"Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=10) as response:
-            data = json.loads(response.read().decode("utf-8"))
-            return data.get("version")
+        result = subprocess.run(
+            ["npm", "view", "@anthropic-ai/claude-code", "version"],
+            capture_output=True,
+            text=True,
+            timeout=15
+        )
+        output = result.stdout.strip()
+        if output:
+            # 输出格式: "2.1.63" 或 "2.1.63\n"
+            return output.split("\n")[0].strip()
+        return None
     except Exception:
         return None
 
