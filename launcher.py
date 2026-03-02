@@ -159,17 +159,18 @@ def launch_in_wt(model, skip_permissions=False):
     if skip_permissions:
         claude_cmd += " --dangerously-skip-permissions"
 
-    # Create PowerShell command
+    # Create PowerShell command (启动后立即还原配置)
     ps_script = f'''
 $Host.UI.RawUI.WindowTitle = '{model["name"]} - Claude Code'
 $env:ANTHROPIC_AUTH_TOKEN = '{model["api_key"]}'
 $env:ANTHROPIC_BASE_URL = '{model["base_url"]}'
 $env:ANTHROPIC_MODEL = '{model["model"]}'
 
-& {claude_cmd}
-
+# 启动后立即还原配置
 $bp = "$env:USERPROFILE\\.claude\\launcher_backup.json"
 if (Test-Path $bp) {{ Copy-Item $bp "$env:USERPROFILE\\.claude\\settings.json" -Force; Remove-Item $bp -Force }}
+
+& {claude_cmd}
 '''
 
     # Write temp script
