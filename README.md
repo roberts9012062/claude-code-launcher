@@ -13,6 +13,9 @@ A TUI-based launcher for Claude Code that supports multiple AI providers. Launch
 - **Secure Storage**: API keys stored locally in configuration file
 - **Skip Permissions Mode**: Toggle `--dangerously-skip-permissions` for faster operation
 - **Settings Restore**: Restore original Claude settings from backup
+- **Version Detection**: Auto-detect local Claude Code version and check for updates
+- **One-Click Update**: Update Claude Code to latest version with a single button
+- **First-Run Detection**: Welcome guide for first-time users
 
 ---
 
@@ -23,6 +26,9 @@ A TUI-based launcher for Claude Code that supports multiple AI providers. Launch
 - **安全存储**: API 密钥本地存储在配置文件中
 - **跳过权限模式**: 一键切换 `--dangerously-skip-permissions` 模式，提升操作效率
 - **配置还原**: 从备份还原 Claude 原始设置
+- **版本检测**: 自动检测本地 Claude Code 版本并检查更新
+- **一键更新**: 单击按钮即可将 Claude Code 更新到最新版本
+- **首次运行检测**: 首次使用时显示欢迎引导
 
 ## Supported Providers / 支持的供应商
 
@@ -140,9 +146,26 @@ Press `S` or click "跳过权限: 关/开" to toggle the mode. When enabled (开
 
 ### Restore Settings / 还原配置
 
-Press `R` or click "还原配置" to restore `~/.claude/settings.json` from backup. This is useful when the launcher's settings modification causes issues.
+Press `R` to restore `~/.claude/settings.json` from backup. This is useful when the launcher's settings modification causes issues.
 
-按 `R` 或点击 "还原配置" 从备份还原 `~/.claude/settings.json`。当启动器的设置修改导致问题时可以使用此功能。
+按 `R` 从备份还原 `~/.claude/settings.json`。当启动器的设置修改导致问题时可以使用此功能。
+
+### Version Detection & Update / 版本检测与更新
+
+The launcher automatically detects:
+- Local Claude Code version (via `claude --version`)
+- Latest version from npm registry (via `npm view`)
+
+启动器会自动检测：
+- 本地 Claude Code 版本（通过 `claude --version`）
+- npm registry 上的最新版本（通过 `npm view`）
+
+**Update Button / 更新按钮:**
+- 🔘 **Disabled (dim)**: No update available, already on latest version
+- 🟢 **Enabled (bright)**: Update available, click to update
+
+- 🔘 **禁用（暗）**: 无可用更新，已是最新版本
+- 🟢 **启用（亮）**: 有可用更新，点击更新
 
 ## Configuration / 配置
 
@@ -166,17 +189,17 @@ Model configurations are stored in `models.json` in the same directory as the la
 
 ## How It Works / 工作原理
 
-1. The launcher modifies `~/.claude/settings.json` temporarily to remove conflicting `env` settings
+1. The launcher backs up and modifies `~/.claude/settings.json` to remove conflicting `env` settings
 2. Sets environment variables (`ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_MODEL`)
 3. Launches Claude Code in Windows Terminal
-4. Restores original settings when Claude Code exits
+4. **Immediately restores** original settings (doesn't affect the running Claude Code)
 
 ---
 
-1. 启动器临时修改 `~/.claude/settings.json`，移除冲突的 `env` 设置
+1. 启动器备份并修改 `~/.claude/settings.json`，移除冲突的 `env` 设置
 2. 设置环境变量 (`ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_MODEL`)
 3. 在 Windows Terminal 中启动 Claude Code
-4. Claude Code 退出后恢复原始设置
+4. **立即还原** 原始设置（不影响已启动的 Claude Code）
 
 ## Screenshots / 截图
 
