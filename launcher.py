@@ -279,8 +279,7 @@ class Launcher(App):
         height: 2;
         background: $surface-darken-1;
         padding: 0 2;
-        align-horizontal: center;
-        align-vertical: middle;
+        align: center middle;
     }
 
     .version-bar Label {
@@ -289,16 +288,6 @@ class Launcher(App):
 
     .version-bar .version-info {
         color: $text;
-    }
-
-    .version-bar .update-btn {
-        margin-left: 2;
-        min-width: 6;
-        height: 1;
-    }
-
-    .version-bar .update-btn:disabled {
-        opacity: 0.4;
     }
 
     .list-container {
@@ -320,6 +309,8 @@ class Launcher(App):
     }
 
     Button { margin: 0 1; min-width: 10; }
+
+    #update-btn:disabled { opacity: 0.4; }
 
     .toggle-btn.on { background: $success; }
     .toggle-btn.off { background: $warning; }
@@ -360,11 +351,11 @@ class Launcher(App):
             yield Label("检测中...", id="local-version", classes="version-info")
             yield Label("  最新: ")
             yield Label("检测中...", id="latest-version", classes="version-info")
-            yield Button("更新", id="update-btn", classes="update-btn", disabled=True)
         with Container(classes="list-container"):
             yield ListView(id="model-list")
         with Horizontal(classes="buttons"):
             yield Button("启动", variant="success", id="launch")
+            yield Button("更新", id="update-btn", disabled=True)
             yield Button("添加", variant="primary", id="add")
             yield Button("编辑", id="edit")
             yield Button("删除", variant="error", id="delete")
