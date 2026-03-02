@@ -5,6 +5,8 @@ import json
 import os
 import shutil
 import subprocess
+import urllib.request
+import urllib.error
 from pathlib import Path
 
 from textual.app import App, ComposeResult
@@ -49,6 +51,70 @@ def find_claude():
 def check_first_run():
     """检查是否首次运行（models.json 不存在）"""
     return not CONFIG_PATH.exists()
+
+
+def get_local_version():
+    """获取本地 Claude Code 版本"""
+    try:
+        result = subprocess.run(
+            ["claude", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode == 0:
+            # 输出格式通常是 "claude-code x.x.x" 或直接 "x.x.x"
+            output = result.stdout.strip()
+            # 提取版本号
+            import re
+            match = re.search(r'(\d+\.\d+\.\d+)', output)
+            if match:
+                return match.group(1)
+        return None
+    except Exception:
+        return None
+
+
+def get_latest_version():
+    """从 npm registry 获取最新版本"""
+    try:
+        url = "https://registry.npmjs.org/@anthropic-ai/claude-code/latest"
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=10) as response:
+            data = json.loads(response.read().decode("utf-8"))
+            return data.get("version")
+    except Exception:
+        return None
+
+
+def compare_versions(v1, v2):
+    """比较版本号，返回 True 如果 v1 < v2（有更新）"""
+    if not v1 or not v2:
+        return False
+    try:
+        parts1 = [int(x) for x in v1.split(".")]
+        parts2 = [int(x) for x in v2.split(".")]
+        # 补齐版本号长度
+        while len(parts1) < 3:
+            parts1.append(0)
+        while len(parts2) < 3:
+            parts2.append(0)
+        return parts1 < parts2
+    except Exception:
+        return False
+
+
+def update_claude_code():
+    """更新 Claude Code 到最新版本"""
+    try:
+        subprocess.run(
+            ["npm", "update", "-g", "@anthropic-ai/claude-code"],
+            capture_output=True,
+            timeout=120
+        )
+        return True
+    except Exception:
+        return False
 
 
 def restore_settings():
@@ -203,6 +269,26 @@ class Launcher(App):
         text-style: bold;
     }
 
+    .version-bar {
+        height: 2;
+        background: $surface-darken-1;
+        padding: 0 2;
+        align: center middle;
+    }
+
+    .version-bar Label {
+        color: $text-muted;
+    }
+
+    .version-bar .version-info {
+        color: $text;
+    }
+
+    .version-bar .version-new {
+        color: $success;
+        text-style: bold;
+    }
+
     .list-container {
         height: 1fr;
         margin: 1 2;
@@ -225,6 +311,9 @@ class Launcher(App):
 
     .toggle-btn.on { background: $success; }
     .toggle-btn.off { background: $warning; }
+
+    .update-btn { min-width: 8; }
+    .update-btn:disabled { opacity: 0.5; }
 
     .status {
         text-align: center;
@@ -257,6 +346,13 @@ class Launcher(App):
     def compose(self) -> ComposeResult:
         with Container(classes="header"):
             yield Label("Claude Code 多模型启动器")
+        with Horizontal(classes="version-bar"):
+            yield Label("版本: ", classes="")
+            yield Label("检测中...", id="local-version", classes="version-info")
+            yield Label(" | 最新: ", classes="")
+            yield Label("检测中...", id="latest-version", classes="version-info")
+            yield Label("", id="update-hint", classes="version-new")
+            yield Button("更新", id="update-btn", classes="update-btn", disabled=True)
         with Container(classes="list-container"):
             yield ListView(id="model-list")
         with Horizontal(classes="buttons"):
@@ -273,9 +369,42 @@ class Launcher(App):
     def on_mount(self):
         self.claude_path, self.claude_found = find_claude()
         self.is_first_run = check_first_run()
+        self.local_version = None
+        self.latest_version = None
+        self.has_update = False
         self.load_models()
         self.check_environment()
+        self.check_version()
         self.query_one("#model-list").focus()
+
+    def check_version(self):
+        """异步检查版本信息"""
+        # 获取本地版本
+        if self.claude_found:
+            self.local_version = get_local_version()
+            if self.local_version:
+                self.query_one("#local-version").update(self.local_version)
+            else:
+                self.query_one("#local-version").update("未知")
+        else:
+            self.query_one("#local-version").update("未安装")
+
+        # 获取最新版本
+        self.query_one("#latest-version").update("获取中...")
+        self.latest_version = get_latest_version()
+        if self.latest_version:
+            self.query_one("#latest-version").update(self.latest_version)
+            # 检查是否有更新
+            if self.local_version and compare_versions(self.local_version, self.latest_version):
+                self.has_update = True
+                self.query_one("#update-btn").disabled = False
+                self.query_one("#update-btn").variant = "success"
+            else:
+                self.has_update = False
+                self.query_one("#update-btn").disabled = True
+        else:
+            self.query_one("#latest-version").update("获取失败")
+            self.query_one("#update-btn").disabled = True
 
     def check_environment(self):
         """检测环境并显示相应提示"""
@@ -311,6 +440,7 @@ class Launcher(App):
             "delete": self.action_delete,
             "restore": self.action_restore,
             "toggle-skip": self.action_toggle_skip,
+            "update-btn": self.action_update,
             "quit": self.action_quit,
         }
         if e.button.id in actions:
@@ -394,6 +524,46 @@ class Launcher(App):
             btn.set_class(False, "on")
             btn.set_class(True, "off")
             self.query_one("#status").update("模式: 正常模式")
+
+    def action_update(self):
+        """更新 Claude Code 到最新版本"""
+        if not self.has_update:
+            return
+
+        self.query_one("#status").update("正在更新 Claude Code...")
+        self.query_one("#update-btn").disabled = True
+
+        # 在后台线程执行更新
+        import threading
+        def do_update():
+            success = update_claude_code()
+            # 更新完成后重新检查版本
+            self.local_version = get_local_version()
+            if success and self.local_version:
+                self.call_from_thread(self.on_update_complete, self.local_version)
+            else:
+                self.call_from_thread(self.on_update_failed)
+
+        thread = threading.Thread(target=do_update, daemon=True)
+        thread.start()
+
+    def on_update_complete(self, new_version):
+        """更新完成回调"""
+        self.query_one("#local-version").update(new_version)
+        self.query_one("#status").update(f"[bold green]✓ 更新成功！当前版本: {new_version}[/]")
+        self.has_update = False
+        # 重新检查是否还有更新
+        if self.latest_version and compare_versions(new_version, self.latest_version):
+            self.query_one("#update-btn").disabled = False
+        else:
+            self.query_one("#update-btn").disabled = True
+            self.query_one("#update-btn").variant = "default"
+
+    def on_update_failed(self):
+        """更新失败回调"""
+        self.query_one("#status").update("[bold red]✗ 更新失败，请手动执行: npm update -g @anthropic-ai/claude-code[/]")
+        if self.has_update:
+            self.query_one("#update-btn").disabled = False
 
 
 if __name__ == "__main__":
