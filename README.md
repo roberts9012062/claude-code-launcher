@@ -11,6 +11,8 @@ A TUI-based launcher for Claude Code that supports multiple AI providers. Launch
 - **Easy Configuration**: Add, edit, and delete model configurations through the TUI
 - **Provider Templates**: Pre-configured templates for popular AI providers
 - **Secure Storage**: API keys stored locally in configuration file
+- **Skip Permissions Mode**: Toggle `--dangerously-skip-permissions` for faster operation
+- **Settings Restore**: Restore original Claude settings from backup
 
 ---
 
@@ -19,6 +21,8 @@ A TUI-based launcher for Claude Code that supports multiple AI providers. Launch
 - **简单配置**: 通过 TUI 界面添加、编辑和删除模型配置
 - **供应商模板**: 预配置主流 AI 供应商模板
 - **安全存储**: API 密钥本地存储在配置文件中
+- **跳过权限模式**: 一键切换 `--dangerously-skip-permissions` 模式，提升操作效率
+- **配置还原**: 从备份还原 Claude 原始设置
 
 ## Supported Providers / 支持的供应商
 
@@ -87,43 +91,58 @@ python launcher.py
 
 | Key | Action | 操作 |
 |-----|--------|------|
+| `↑` `↓` | Select model | 选择模型 |
 | `Enter` | Launch selected model | 启动选中模型 |
 | `A` | Add new model | 添加新模型 |
 | `E` | Edit selected model | 编辑选中模型 |
 | `D` | Delete selected model | 删除选中模型 |
+| `R` | Restore settings from backup | 还原配置 |
+| `S` | Toggle skip permissions mode | 切换跳过权限模式 |
 | `Q` | Quit application | 退出程序 |
 
 ### Adding a Model / 添加模型
 
-1. Press `A` or click "Add" button
+1. Press `A` or click "添加" button
 2. Select a provider from the dropdown (or choose "Custom")
 3. Enter a name for your configuration
 4. Enter your API key
 5. Base URL and Model fields will auto-fill based on provider
-6. Click "Save"
+6. Click "保存"
 
 ---
 
-1. 按 `A` 或点击 "Add" 按钮
+1. 按 `A` 或点击 "添加" 按钮
 2. 从下拉菜单选择供应商（或选择 "Custom" 自定义）
 3. 输入配置名称
 4. 输入 API Key
 5. Base URL 和 Model 会根据供应商自动填充
-6. 点击 "Save" 保存
+6. 点击 "保存"
 
 ### Launching Claude Code / 启动 Claude Code
 
-1. Select a model from the list using arrow keys
-2. Press `Enter` or click "Launch"
+1. Select a model from the list using `↑` `↓` keys
+2. Press `Enter` or click "启动"
 3. Claude Code will open in a new Windows Terminal tab
 4. Launch another model to open it in another tab
 
 ---
 
-1. 使用方向键从列表中选择模型
-2. 按 `Enter` 或点击 "Launch"
+1. 使用 `↑` `↓` 键从列表中选择模型
+2. 按 `Enter` 或点击 "启动"
 3. Claude Code 将在新的 Windows Terminal 标签页中打开
 4. 启动另一个模型将在另一个标签页中打开
+
+### Skip Permissions Mode / 跳过权限模式
+
+Press `S` or click "跳过权限: 关/开" to toggle the mode. When enabled (开), Claude Code runs with `--dangerously-skip-permissions` flag, skipping all permission prompts.
+
+按 `S` 或点击 "跳过权限: 关/开" 切换模式。开启后，Claude Code 将使用 `--dangerously-skip-permissions` 参数运行，跳过所有权限确认。
+
+### Restore Settings / 还原配置
+
+Press `R` or click "还原配置" to restore `~/.claude/settings.json` from backup. This is useful when the launcher's settings modification causes issues.
+
+按 `R` 或点击 "还原配置" 从备份还原 `~/.claude/settings.json`。当启动器的设置修改导致问题时可以使用此功能。
 
 ## Configuration / 配置
 
