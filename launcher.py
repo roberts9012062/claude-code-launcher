@@ -279,7 +279,8 @@ class Launcher(App):
         height: 2;
         background: $surface-darken-1;
         padding: 0 2;
-        align: center middle;
+        align-horizontal: center;
+        align-vertical: middle;
     }
 
     .version-bar Label {
@@ -290,9 +291,14 @@ class Launcher(App):
         color: $text;
     }
 
-    .version-bar .version-new {
-        color: $success;
-        text-style: bold;
+    .version-bar .update-btn {
+        margin-left: 2;
+        min-width: 6;
+        height: 1;
+    }
+
+    .version-bar .update-btn:disabled {
+        opacity: 0.4;
     }
 
     .list-container {
@@ -317,9 +323,6 @@ class Launcher(App):
 
     .toggle-btn.on { background: $success; }
     .toggle-btn.off { background: $warning; }
-
-    .update-btn { min-width: 8; }
-    .update-btn:disabled { opacity: 0.5; }
 
     .status {
         text-align: center;
@@ -353,11 +356,10 @@ class Launcher(App):
         with Container(classes="header"):
             yield Label("Claude Code 多模型启动器")
         with Horizontal(classes="version-bar"):
-            yield Label("版本: ", classes="")
+            yield Label("本地: ")
             yield Label("检测中...", id="local-version", classes="version-info")
-            yield Label(" | 最新: ", classes="")
+            yield Label("  最新: ")
             yield Label("检测中...", id="latest-version", classes="version-info")
-            yield Label("", id="update-hint", classes="version-new")
             yield Button("更新", id="update-btn", classes="update-btn", disabled=True)
         with Container(classes="list-container"):
             yield ListView(id="model-list")
@@ -366,10 +368,9 @@ class Launcher(App):
             yield Button("添加", variant="primary", id="add")
             yield Button("编辑", id="edit")
             yield Button("删除", variant="error", id="delete")
-            yield Button("还原配置", id="restore")
             yield Button("跳过权限: 关", id="toggle-skip", classes="toggle-btn off")
             yield Button("退出", id="quit")
-        yield Label("选择模型后按 Enter 或点击启动", classes="status", id="status")
+        yield Label("选择模型后按 Enter 启动 | R 还原配置 | S 跳过权限", classes="status", id="status")
         yield Label("↑↓ 选择模型 | 在 Windows Terminal 标签页中打开", classes="info")
 
     def on_mount(self):
@@ -444,7 +445,6 @@ class Launcher(App):
             "add": self.action_add,
             "edit": self.action_edit,
             "delete": self.action_delete,
-            "restore": self.action_restore,
             "toggle-skip": self.action_toggle_skip,
             "update-btn": self.action_update,
             "quit": self.action_quit,
