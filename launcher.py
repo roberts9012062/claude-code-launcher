@@ -38,11 +38,17 @@ def save_config(cfg):
 
 
 def find_claude():
+    """查找 Claude Code CLI，返回 (路径, 是否找到)"""
     for d in os.environ.get("PATH", "").split(";"):
         p = Path(d) / "claude.cmd"
         if p.exists():
-            return str(p)
-    return "claude"
+            return str(p), True
+    return "claude", False
+
+
+def check_first_run():
+    """检查是否首次运行（models.json 不存在）"""
+    return not CONFIG_PATH.exists()
 
 
 def restore_settings():
@@ -76,7 +82,8 @@ def launch_in_wt(model, skip_permissions=False):
             pass
 
     # Build claude command
-    claude_cmd = f"'{find_claude()}'"
+    claude_path, _ = find_claude()
+    claude_cmd = f"'{claude_path}'"
     if skip_permissions:
         claude_cmd += " --dangerously-skip-permissions"
 
@@ -264,8 +271,28 @@ class Launcher(App):
         yield Label("↑↓ 选择模型 | 在 Windows Terminal 标签页中打开", classes="info")
 
     def on_mount(self):
+        self.claude_path, self.claude_found = find_claude()
+        self.is_first_run = check_first_run()
         self.load_models()
+        self.check_environment()
         self.query_one("#model-list").focus()
+
+    def check_environment(self):
+        """检测环境并显示相应提示"""
+        messages = []
+
+        if not self.claude_found:
+            messages.append("[bold red]⚠ 未检测到 Claude Code CLI[/]")
+            messages.append("请先安装: npm install -g @anthropic-ai/claude-code")
+
+        if self.is_first_run:
+            messages.append("[bold yellow]🎉 欢迎首次使用！[/]")
+            messages.append("按 'A' 添加你的第一个模型配置")
+
+        if messages:
+            self.query_one("#status").update("\n".join(messages))
+        elif not load_config().get("models"):
+            self.query_one("#status").update("暂无模型配置，按 'A' 添加")
 
     def load_models(self):
         lst = self.query_one("#model-list")
@@ -275,8 +302,6 @@ class Launcher(App):
             item = ListItem(Static(f"[bold]{m['name']}[/] - {m['model']}"))
             item.model = m
             lst.append(item)
-        if not cfg.get("models"):
-            self.query_one("#status").update("暂无模型配置，按 'A' 添加")
 
     def on_button_pressed(self, e):
         actions = {
@@ -296,6 +321,12 @@ class Launcher(App):
             self.action_launch()
 
     def action_launch(self):
+        # 检查 Claude Code 是否安装
+        if not self.claude_found:
+            self.query_one("#status").update("[bold red]⚠ 请先安装 Claude Code CLI[/]\nnpm install -g @anthropic-ai/claude-code")
+            self.app.bell()
+            return
+
         lst = self.query_one("#model-list")
         if lst.highlighted_child and hasattr(lst.highlighted_child, "model"):
             model = lst.highlighted_child.model
