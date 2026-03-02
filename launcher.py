@@ -3,6 +3,7 @@ Claude Code Multi-Model Launcher - Windows Terminal Tabs
 """
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -44,7 +45,22 @@ def find_claude():
     return "claude"
 
 
-def launch_in_wt(model):
+def restore_settings():
+    """Restore settings.json from backup"""
+    settings_path = Path.home() / ".claude" / "settings.json"
+    backup_path = Path.home() / ".claude" / "launcher_backup.json"
+
+    if backup_path.exists():
+        try:
+            shutil.copy(backup_path, settings_path)
+            backup_path.unlink()
+            return True
+        except Exception:
+            return False
+    return None  # No backup exists
+
+
+def launch_in_wt(model, skip_permissions=False):
     """Launch Claude Code in Windows Terminal tab"""
     settings_path = Path.home() / ".claude" / "settings.json"
     backup_path = Path.home() / ".claude" / "launcher_backup.json"
@@ -52,13 +68,17 @@ def launch_in_wt(model):
     # Backup and modify settings
     if settings_path.exists():
         try:
-            import shutil
             shutil.copy(settings_path, backup_path)
             settings = json.loads(settings_path.read_text(encoding="utf-8"))
             settings.pop("env", None)
             settings_path.write_text(json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8")
         except Exception:
             pass
+
+    # Build claude command
+    claude_cmd = f"'{find_claude()}'"
+    if skip_permissions:
+        claude_cmd += " --dangerously-skip-permissions"
 
     # Create PowerShell command
     ps_script = f'''
@@ -67,7 +87,7 @@ $env:ANTHROPIC_AUTH_TOKEN = '{model["api_key"]}'
 $env:ANTHROPIC_BASE_URL = '{model["base_url"]}'
 $env:ANTHROPIC_MODEL = '{model["model"]}'
 
-& '{find_claude()}'
+& {claude_cmd}
 
 $bp = "$env:USERPROFILE\\.claude\\launcher_backup.json"
 if (Test-Path $bp) {{ Copy-Item $bp "$env:USERPROFILE\\.claude\\settings.json" -Force; Remove-Item $bp -Force }}
@@ -113,21 +133,21 @@ class EditScreen(ModalScreen):
         self.model = model or {}
 
     def compose(self):
-        yield Label("Add Model" if not self.model else "Edit Model", classes="ttl")
-        yield Label("Provider:", classes="lbl")
+        yield Label("添加模型" if not self.model else "编辑模型", classes="ttl")
+        yield Label("供应商:", classes="lbl")
         yield Select([(p["name"], p["name"]) for p in PROVIDERS],
                      value=self.model.get("provider", PROVIDERS[0]["name"]), id="prov")
-        yield Label("Name:", classes="lbl")
+        yield Label("名称:", classes="lbl")
         yield Input(value=self.model.get("name", ""), id="name")
         yield Label("API Key:", classes="lbl")
         yield Input(value=self.model.get("api_key", ""), id="key", password=True)
         yield Label("Base URL:", classes="lbl")
         yield Input(value=self.model.get("base_url", ""), id="url")
-        yield Label("Model:", classes="lbl")
+        yield Label("模型:", classes="lbl")
         yield Input(value=self.model.get("model", ""), id="model")
         with Horizontal(classes="btns"):
-            yield Button("Save", variant="primary", id="save")
-            yield Button("Cancel", id="cancel")
+            yield Button("保存", variant="primary", id="save")
+            yield Button("取消", id="cancel")
 
     def on_mount(self):
         self.query_one("#name").focus()
@@ -196,6 +216,9 @@ class Launcher(App):
 
     Button { margin: 0 1; min-width: 10; }
 
+    .toggle-btn.on { background: $success; }
+    .toggle-btn.off { background: $warning; }
+
     .status {
         text-align: center;
         color: $text-muted;
@@ -211,26 +234,34 @@ class Launcher(App):
     """
 
     BINDINGS = [
-        ("q", "quit", "Quit"),
-        ("a", "add", "Add"),
-        ("e", "edit", "Edit"),
-        ("d", "delete", "Delete"),
-        ("enter", "launch", "Launch"),
+        ("q", "quit", "退出"),
+        ("a", "add", "添加"),
+        ("e", "edit", "编辑"),
+        ("d", "delete", "删除"),
+        ("enter", "launch", "启动"),
+        ("s", "toggle_skip", "跳过权限"),
+        ("r", "restore", "还原"),
     ]
+
+    def __init__(self):
+        super().__init__()
+        self.skip_permissions = False
 
     def compose(self) -> ComposeResult:
         with Container(classes="header"):
-            yield Label("Claude Code Multi-Model Launcher")
+            yield Label("Claude Code 多模型启动器")
         with Container(classes="list-container"):
             yield ListView(id="model-list")
         with Horizontal(classes="buttons"):
-            yield Button("Launch", variant="success", id="launch")
-            yield Button("Add", variant="primary", id="add")
-            yield Button("Edit", id="edit")
-            yield Button("Delete", variant="error", id="delete")
-            yield Button("Quit", id="quit")
-        yield Label("Select model and press Enter or click Launch", classes="status", id="status")
-        yield Label("Opens in Windows Terminal tabs - Ctrl+Shift+T for new tab", classes="info")
+            yield Button("启动", variant="success", id="launch")
+            yield Button("添加", variant="primary", id="add")
+            yield Button("编辑", id="edit")
+            yield Button("删除", variant="error", id="delete")
+            yield Button("还原配置", id="restore")
+            yield Button("跳过权限: 关", id="toggle-skip", classes="toggle-btn off")
+            yield Button("退出", id="quit")
+        yield Label("选择模型后按 Enter 或点击启动", classes="status", id="status")
+        yield Label("↑↓ 选择模型 | 在 Windows Terminal 标签页中打开", classes="info")
 
     def on_mount(self):
         self.load_models()
@@ -245,7 +276,7 @@ class Launcher(App):
             item.model = m
             lst.append(item)
         if not cfg.get("models"):
-            self.query_one("#status").update("No models. Press 'A' to add one.")
+            self.query_one("#status").update("暂无模型配置，按 'A' 添加")
 
     def on_button_pressed(self, e):
         actions = {
@@ -253,6 +284,8 @@ class Launcher(App):
             "add": self.action_add,
             "edit": self.action_edit,
             "delete": self.action_delete,
+            "restore": self.action_restore,
+            "toggle-skip": self.action_toggle_skip,
             "quit": self.action_quit,
         }
         if e.button.id in actions:
@@ -266,11 +299,12 @@ class Launcher(App):
         lst = self.query_one("#model-list")
         if lst.highlighted_child and hasattr(lst.highlighted_child, "model"):
             model = lst.highlighted_child.model
-            success = launch_in_wt(model)
+            success = launch_in_wt(model, self.skip_permissions)
             if success:
-                self.query_one("#status").update(f"Launched: {model['name']}")
+                mode = " (跳过权限)" if self.skip_permissions else ""
+                self.query_one("#status").update(f"已启动: {model['name']}{mode}")
             else:
-                self.query_one("#status").update(f"Failed to launch: {model['name']}")
+                self.query_one("#status").update(f"启动失败: {model['name']}")
 
     def action_add(self):
         def cb(r):
@@ -304,6 +338,31 @@ class Launcher(App):
             cfg["models"] = [m for m in cfg["models"] if m != model]
             save_config(cfg)
             self.load_models()
+
+    def action_restore(self):
+        """还原 settings.json 配置"""
+        result = restore_settings()
+        if result is True:
+            self.query_one("#status").update("配置已还原")
+        elif result is False:
+            self.query_one("#status").update("还原失败")
+        else:
+            self.query_one("#status").update("未找到备份文件")
+
+    def action_toggle_skip(self):
+        """切换跳过权限模式"""
+        self.skip_permissions = not self.skip_permissions
+        btn = self.query_one("#toggle-skip")
+        if self.skip_permissions:
+            btn.label = "跳过权限: 开"
+            btn.set_class(True, "on")
+            btn.set_class(False, "off")
+            self.query_one("#status").update("模式: 跳过权限验证")
+        else:
+            btn.label = "跳过权限: 关"
+            btn.set_class(False, "on")
+            btn.set_class(True, "off")
+            self.query_one("#status").update("模式: 正常模式")
 
 
 if __name__ == "__main__":
