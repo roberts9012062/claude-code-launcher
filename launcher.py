@@ -59,7 +59,8 @@ def get_local_version():
             ["claude", "--version"],
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=10,
+            shell=True  # Windows 需要 shell=True 才能找到命令
         )
         # 合并 stdout 和 stderr（版本信息可能在任一位置）
         output = (result.stdout + result.stderr).strip()
@@ -79,7 +80,8 @@ def get_latest_version():
             ["npm", "view", "@anthropic-ai/claude-code", "version"],
             capture_output=True,
             text=True,
-            timeout=15
+            timeout=15,
+            shell=True  # Windows 需要 shell=True 才能找到命令
         )
         output = result.stdout.strip()
         if output:
@@ -113,7 +115,8 @@ def update_claude_code():
         subprocess.run(
             ["npm", "update", "-g", "@anthropic-ai/claude-code"],
             capture_output=True,
-            timeout=120
+            timeout=120,
+            shell=True  # Windows 需要 shell=True
         )
         return True
     except Exception:
