@@ -138,6 +138,55 @@ def restore_settings():
     return None  # No backup exists
 
 
+def start_monitor_process():
+    """启动独立的监控进程，当所有 Claude Code 都关闭时还原配置"""
+    monitor_script = '''
+import subprocess
+import time
+import shutil
+from pathlib import Path
+
+settings_path = Path.home() / ".claude" / "settings.json"
+backup_path = Path.home() / ".claude" / "launcher_backup.json"
+
+# 等待 claude 进程启动
+time.sleep(3)
+
+def get_claude_count():
+    """获取 Claude Code 进程数量"""
+    try:
+        result = subprocess.run(
+            ['wmic', 'process', 'where', 'name="node.exe"', 'get', 'commandline', '/format:list'],
+            capture_output=True, text=True, timeout=10, shell=True
+        )
+        # 计算包含 claude 的命令行数量
+        lines = result.stdout.lower()
+        return lines.count('claude')
+    except Exception:
+        return 999  # 出错时返回大数字，避免误还原
+
+# 持续监控，直到没有 claude 进程
+while backup_path.exists():
+    count = get_claude_count()
+    if count == 0:
+        # 所有 Claude Code 都关闭了，还原配置
+        if backup_path.exists():
+            try:
+                shutil.copy(backup_path, settings_path)
+                backup_path.unlink()
+            except Exception:
+                pass
+        break
+    time.sleep(2)
+'''
+
+    # 用 pythonw 启动独立进程（无窗口）
+    subprocess.Popen(
+        ["pythonw", "-c", monitor_script],
+        creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0x08000000
+    )
+
+
 def launch_in_wt(model, skip_permissions=False):
     """Launch Claude Code in Windows Terminal tab"""
     settings_path = Path.home() / ".claude" / "settings.json"
@@ -159,18 +208,19 @@ def launch_in_wt(model, skip_permissions=False):
     if skip_permissions:
         claude_cmd += " --dangerously-skip-permissions"
 
-    # Create PowerShell command (启动后立即还原配置)
+    # Create PowerShell command (正常退出时还原配置作为备用)
     ps_script = f'''
 $Host.UI.RawUI.WindowTitle = '{model["name"]} - Claude Code'
 $env:ANTHROPIC_AUTH_TOKEN = '{model["api_key"]}'
 $env:ANTHROPIC_BASE_URL = '{model["base_url"]}'
 $env:ANTHROPIC_MODEL = '{model["model"]}'
 
-# 启动后立即还原配置
+# 启动 Claude Code 并等待退出
+& {claude_cmd}
+
+# Claude Code 退出后还原配置（备用方案）
 $bp = "$env:USERPROFILE\\.claude\\launcher_backup.json"
 if (Test-Path $bp) {{ Copy-Item $bp "$env:USERPROFILE\\.claude\\settings.json" -Force; Remove-Item $bp -Force }}
-
-& {claude_cmd}
 '''
 
     # Write temp script
@@ -178,9 +228,12 @@ if (Test-Path $bp) {{ Copy-Item $bp "$env:USERPROFILE\\.claude\\settings.json" -
     tmp = Path(tempfile.gettempdir()) / f"claude_launch_{os.getpid()}.ps1"
     tmp.write_text(ps_script, encoding="utf-8")
 
+    # 启动独立监控进程
+    start_monitor_process()
+
     # Launch in Windows Terminal new tab
     try:
-        subprocess.Popen([
+        proc = subprocess.Popen([
             "wt", "new-tab",
             "--title", f"{model['name']}",
             "powershell", "-NoExit", "-ExecutionPolicy", "Bypass", "-File", str(tmp)
@@ -188,7 +241,7 @@ if (Test-Path $bp) {{ Copy-Item $bp "$env:USERPROFILE\\.claude\\settings.json" -
         return True
     except FileNotFoundError:
         # Fallback: launch in separate PowerShell window
-        subprocess.Popen([
+        proc = subprocess.Popen([
             "powershell", "-NoExit", "-ExecutionPolicy", "Bypass", "-File", str(tmp)
         ], creationflags=subprocess.CREATE_NEW_CONSOLE)
         return True
@@ -360,6 +413,7 @@ class Launcher(App):
             yield Button("添加", variant="primary", id="add")
             yield Button("编辑", id="edit")
             yield Button("删除", variant="error", id="delete")
+            yield Button("还原", id="restore")
             yield Button("跳过权限: 关", id="toggle-skip", classes="toggle-btn off")
             yield Button("退出", id="quit")
         yield Label("选择模型后按 Enter 启动 | R 还原配置 | S 跳过权限", classes="status", id="status")
@@ -437,6 +491,7 @@ class Launcher(App):
             "add": self.action_add,
             "edit": self.action_edit,
             "delete": self.action_delete,
+            "restore": self.action_restore,
             "toggle-skip": self.action_toggle_skip,
             "update-btn": self.action_update,
             "quit": self.action_quit,
