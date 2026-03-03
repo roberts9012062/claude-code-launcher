@@ -123,10 +123,125 @@ def update_claude_code():
         return False
 
 
-def restore_settings():
-    """Restore settings.json from backup"""
+def get_markers_dir():
+    """获取实例标记文件目录"""
+    markers_dir = Path.home() / ".claude" / "launcher_markers"
+    if not markers_dir.exists():
+        markers_dir.mkdir(parents=True, exist_ok=True)
+    return markers_dir
+
+
+def get_backup_path():
+    """获取 settings.json 备份路径"""
+    return Path.home() / ".claude" / "launcher_backup.json"
+
+
+def get_running_pids():
+    """获取当前运行的 claude 进程 PID 列表（只检测 node.exe）"""
+    try:
+        result = subprocess.run(
+            ['wmic', 'process', 'where', 'name="node.exe"', 'get', 'processid,commandline', '/format:csv'],
+            capture_output=True, text=True, timeout=10, shell=True
+        )
+        pids = []
+        for line in result.stdout.split('\n'):
+            if 'claude' in line.lower():
+                parts = line.strip().split(',')
+                if len(parts) >= 2 and parts[-1].isdigit():
+                    pids.append(int(parts[-1]))
+        return pids
+    except Exception:
+        return [999]  # 出错时返回假数据
+
+
+def count_active_markers():
+    """统计活跃的实例标记数量，清理孤立标记"""
+    import time
+    markers_dir = get_markers_dir()
+    if not markers_dir.exists():
+        return 0
+
+    markers = list(markers_dir.glob("*.marker"))
+    if not markers:
+        return 0
+
+    now = time.time()
+    active_count = 0
+
+    for marker in markers:
+        try:
+            data = json.loads(marker.read_text(encoding="utf-8"))
+            created_at = data.get("created_at", 0)
+            age = now - created_at
+
+            # 30秒保护期内不清理
+            if age < 30:
+                active_count += 1
+                continue
+
+            # 超过保护期，检查进程
+            running_pids = get_running_pids()
+            if running_pids == [999]:
+                # 检测出错，保留标记
+                active_count += 1
+            elif not running_pids:
+                # 没有进程，删除标记
+                marker.unlink()
+            else:
+                # 有进程，保留标记
+                active_count += 1
+        except Exception:
+            # 读取失败，删除标记
+            marker.unlink()
+
+    return active_count
+
+
+def create_marker(instance_id):
+    """创建实例标记文件"""
+    import time
+    marker_path = get_markers_dir() / f"{instance_id}.marker"
+    marker_data = {
+        "id": instance_id,
+        "created_at": time.time()
+    }
+    marker_path.write_text(json.dumps(marker_data), encoding="utf-8")
+
+
+def remove_marker(instance_id):
+    """删除实例标记文件"""
+    marker_path = get_markers_dir() / f"{instance_id}.marker"
+    if marker_path.exists():
+        marker_path.unlink()
+
+
+def cleanup_orphaned_backup():
+    """清理孤立的备份文件（没有活跃标记时）"""
+    backup_path = get_backup_path()
     settings_path = Path.home() / ".claude" / "settings.json"
-    backup_path = Path.home() / ".claude" / "launcher_backup.json"
+
+    if not backup_path.exists():
+        return False
+
+    # 检查是否有活跃的实例标记
+    active_count = count_active_markers()
+    if active_count > 0:
+        return False
+
+    # 没有活跃标记，还原配置
+    try:
+        shutil.copy(backup_path, settings_path)
+        backup_path.unlink()
+        return True
+    except Exception:
+        pass
+    return False
+
+
+def restore_settings():
+    """还原 settings.json 配置"""
+    settings_path = Path.home() / ".claude" / "settings.json"
+    backup_path = get_backup_path()
 
     if backup_path.exists():
         try:
@@ -135,72 +250,36 @@ def restore_settings():
             return True
         except Exception:
             return False
-    return None  # No backup exists
-
-
-def start_monitor_process():
-    """启动独立的监控进程，当所有 Claude Code 都关闭时还原配置"""
-    monitor_script = '''
-import subprocess
-import time
-import shutil
-from pathlib import Path
-
-settings_path = Path.home() / ".claude" / "settings.json"
-backup_path = Path.home() / ".claude" / "launcher_backup.json"
-
-# 等待 claude 进程启动
-time.sleep(3)
-
-def get_claude_count():
-    """获取 Claude Code 进程数量"""
-    try:
-        result = subprocess.run(
-            ['wmic', 'process', 'where', 'name="node.exe"', 'get', 'commandline', '/format:list'],
-            capture_output=True, text=True, timeout=10, shell=True
-        )
-        # 计算包含 claude 的命令行数量
-        lines = result.stdout.lower()
-        return lines.count('claude')
-    except Exception:
-        return 999  # 出错时返回大数字，避免误还原
-
-# 持续监控，直到没有 claude 进程
-while backup_path.exists():
-    count = get_claude_count()
-    if count == 0:
-        # 所有 Claude Code 都关闭了，还原配置
-        if backup_path.exists():
-            try:
-                shutil.copy(backup_path, settings_path)
-                backup_path.unlink()
-            except Exception:
-                pass
-        break
-    time.sleep(2)
-'''
-
-    # 用 pythonw 启动独立进程（无窗口）
-    subprocess.Popen(
-        ["pythonw", "-c", monitor_script],
-        creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0x08000000
-    )
+    return None
 
 
 def launch_in_wt(model, skip_permissions=False):
     """Launch Claude Code in Windows Terminal tab"""
+    import time
     settings_path = Path.home() / ".claude" / "settings.json"
-    backup_path = Path.home() / ".claude" / "launcher_backup.json"
+    backup_path = get_backup_path()
 
-    # Backup and modify settings
-    if settings_path.exists():
+    # 生成实例 ID
+    instance_id = str(int(time.time() * 1000))
+
+    # 检查是否是第一个启动器实例
+    is_first_instance = count_active_markers() == 0
+
+    # 只有第一个实例才备份并修改 settings.json
+    if is_first_instance and settings_path.exists() and not backup_path.exists():
         try:
+            # 备份原始配置
             shutil.copy(settings_path, backup_path)
+            # 移除 env 避免 conflicts
             settings = json.loads(settings_path.read_text(encoding="utf-8"))
-            settings.pop("env", None)
-            settings_path.write_text(json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8")
+            if "env" in settings:
+                settings.pop("env")
+                settings_path.write_text(json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8")
         except Exception:
             pass
+
+    # 创建实例标记
+    create_marker(instance_id)
 
     # Build claude command
     claude_path, _ = find_claude()
@@ -208,28 +287,28 @@ def launch_in_wt(model, skip_permissions=False):
     if skip_permissions:
         claude_cmd += " --dangerously-skip-permissions"
 
-    # Create PowerShell command (正常退出时还原配置作为备用)
+    # Create PowerShell command - 退出时删除标记
     ps_script = f'''
 $Host.UI.RawUI.WindowTitle = '{model["name"]} - Claude Code'
 $env:ANTHROPIC_AUTH_TOKEN = '{model["api_key"]}'
 $env:ANTHROPIC_BASE_URL = '{model["base_url"]}'
 $env:ANTHROPIC_MODEL = '{model["model"]}'
 
-# 启动 Claude Code 并等待退出
-& {claude_cmd}
+$markerPath = "$env:USERPROFILE\\.claude\\launcher_markers\\{instance_id}.marker"
 
-# Claude Code 退出后还原配置（备用方案）
-$bp = "$env:USERPROFILE\\.claude\\launcher_backup.json"
-if (Test-Path $bp) {{ Copy-Item $bp "$env:USERPROFILE\\.claude\\settings.json" -Force; Remove-Item $bp -Force }}
+try {{
+    & {claude_cmd}
+}} finally {{
+    if (Test-Path $markerPath) {{
+        Remove-Item $markerPath -Force
+    }}
+}}
 '''
 
-    # Write temp script
+    # Write temp script (UTF-8 with BOM for PowerShell)
     import tempfile
-    tmp = Path(tempfile.gettempdir()) / f"claude_launch_{os.getpid()}.ps1"
-    tmp.write_text(ps_script, encoding="utf-8")
-
-    # 启动独立监控进程
-    start_monitor_process()
+    tmp = Path(tempfile.gettempdir()) / f"claude_launch_{instance_id}.ps1"
+    tmp.write_bytes(b'\xef\xbb\xbf' + ps_script.encode('utf-8'))
 
     # Launch in Windows Terminal new tab
     try:
@@ -420,6 +499,10 @@ class Launcher(App):
         yield Label("↑↓ 选择模型 | 在 Windows Terminal 标签页中打开", classes="info")
 
     def on_mount(self):
+        # 启动时检查是否有孤立的备份需要清理
+        if cleanup_orphaned_backup():
+            self.call_later(self._show_restore_message)
+
         self.claude_path, self.claude_found = find_claude()
         self.is_first_run = check_first_run()
         self.local_version = None
@@ -429,6 +512,17 @@ class Launcher(App):
         self.check_environment()
         self.check_version()
         self.query_one("#model-list").focus()
+
+        # 启动定时检查（每5秒检查一次是否需要清理）
+        self.set_interval(5, self._periodic_cleanup)
+
+    def _periodic_cleanup(self):
+        """定时检查是否需要清理孤立备份"""
+        if cleanup_orphaned_backup():
+            self.query_one("#status").update("[green]检测到实例已关闭，配置已自动还原[/]")
+
+    def _show_restore_message(self):
+        self.query_one("#status").update("[green]已自动还原上次异常退出的配置[/]")
 
     def check_version(self):
         """异步检查版本信息"""
