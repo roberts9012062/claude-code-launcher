@@ -148,8 +148,15 @@ def has_backup():
     return get_backup_path().exists()
 
 
-def launch_in_wt(model, skip_permissions=False):
-    """Launch Claude Code in Windows Terminal tab"""
+def launch_in_wt(model, skip_permissions=False, window_mode="current", pane_count=1):
+    """Launch Claude Code in Windows Terminal
+
+    Args:
+        model: Model configuration dict
+        skip_permissions: Whether to skip permission checks
+        window_mode: "current" (本窗口) or "new" (新窗口)
+        pane_count: 1-4, 分屏数量
+    """
     settings_path = Path.home() / ".claude" / "settings.json"
     backup_path = get_backup_path()
 
@@ -189,17 +196,65 @@ $env:ANTHROPIC_MODEL = '{model["model"]}'
     tmp = Path(tempfile.gettempdir()) / f"claude_launch_{instance_id}.ps1"
     tmp.write_bytes(b'\xef\xbb\xbf' + ps_script.encode('utf-8'))
 
-    # Launch in Windows Terminal new tab
+    # 构建窗口参数
+    window_arg = "0" if window_mode == "current" else "-1"  # -1 表示新窗口
+
+    # 构建基础命令
+    ps_cmd = f'powershell -NoExit -ExecutionPolicy Bypass -File "{tmp}"'
+
     try:
-        proc = subprocess.Popen([
-            "wt", "new-tab",
-            "--title", f"{model['name']}",
-            "powershell", "-NoExit", "-ExecutionPolicy", "Bypass", "-File", str(tmp)
-        ])
+        if pane_count == 1:
+            # 1屏：新标签页
+            subprocess.Popen([
+                "wt", "-w", window_arg,
+                "new-tab", "--title", model["name"],
+                "powershell", "-NoExit", "-ExecutionPolicy", "Bypass", "-File", str(tmp)
+            ])
+
+        elif pane_count == 2:
+            # 2屏：左右分屏
+            subprocess.Popen([
+                "wt", "-w", window_arg,
+                "new-tab", "--title", model["name"],
+                "powershell", "-NoExit", "-ExecutionPolicy", "Bypass", "-File", str(tmp),
+                ";", "split-pane", "-H", "--title", model["name"],
+                "powershell", "-NoExit", "-ExecutionPolicy", "Bypass", "-File", str(tmp)
+            ])
+
+        elif pane_count == 3:
+            # 3屏：左边1个大，右边2个小
+            subprocess.Popen([
+                "wt", "-w", window_arg,
+                "new-tab", "--title", model["name"],
+                "powershell", "-NoExit", "-ExecutionPolicy", "Bypass", "-File", str(tmp),
+                ";", "split-pane", "-H", "--title", model["name"],
+                "powershell", "-NoExit", "-ExecutionPolicy", "Bypass", "-File", str(tmp),
+                ";", "move-focus", "right",
+                ";", "split-pane", "-V", "--title", model["name"],
+                "powershell", "-NoExit", "-ExecutionPolicy", "Bypass", "-File", str(tmp)
+            ])
+
+        elif pane_count == 4:
+            # 4屏：田字布局
+            # 先分上下，再分别在上下各自分左右
+            # new-tab(上) -> split-pane -V(下) -> split-pane -H(右下) -> move-focus up -> split-pane -H(右上)
+            subprocess.Popen([
+                "wt", "-w", window_arg,
+                "new-tab", "--title", model["name"],
+                "powershell", "-NoExit", "-ExecutionPolicy", "Bypass", "-File", str(tmp),
+                ";", "split-pane", "-V", "--title", model["name"],
+                "powershell", "-NoExit", "-ExecutionPolicy", "Bypass", "-File", str(tmp),
+                ";", "split-pane", "-H", "--title", model["name"],
+                "powershell", "-NoExit", "-ExecutionPolicy", "Bypass", "-File", str(tmp),
+                ";", "move-focus", "up",
+                ";", "split-pane", "-H", "--title", model["name"],
+                "powershell", "-NoExit", "-ExecutionPolicy", "Bypass", "-File", str(tmp)
+            ])
+
         return True
     except FileNotFoundError:
         # Fallback: launch in separate PowerShell window
-        proc = subprocess.Popen([
+        subprocess.Popen([
             "powershell", "-NoExit", "-ExecutionPolicy", "Bypass", "-File", str(tmp)
         ], creationflags=subprocess.CREATE_NEW_CONSOLE)
         return True
@@ -327,6 +382,9 @@ class Launcher(App):
     .toggle-btn.on { background: $success; }
     .toggle-btn.off { background: $warning; }
 
+    .mode-btn { background: $primary; min-width: 8; }
+    .pane-btn { background: $accent; min-width: 6; }
+
     .status {
         text-align: center;
         color: $text-muted;
@@ -347,13 +405,31 @@ class Launcher(App):
         ("e", "edit", "编辑"),
         ("d", "delete", "删除"),
         ("enter", "launch", "启动"),
+        ("w", "toggle_window", "窗口模式"),
+        ("p", "toggle_panes", "分屏数量"),
         ("s", "toggle_skip", "跳过权限"),
         ("r", "restore", "还原"),
+    ]
+
+    # 窗口模式：本窗口 / 新窗口
+    WINDOW_MODES = [
+        {"id": "current", "label": "本窗口"},
+        {"id": "new", "label": "新窗口"},
+    ]
+
+    # 分屏数量：1-4屏
+    PANE_COUNTS = [
+        {"id": 1, "label": "1屏"},
+        {"id": 2, "label": "2屏"},
+        {"id": 3, "label": "3屏"},
+        {"id": 4, "label": "4屏"},
     ]
 
     def __init__(self):
         super().__init__()
         self.skip_permissions = False
+        self.window_mode_index = 0  # 0=本窗口, 1=新窗口
+        self.pane_count_index = 0   # 0=1屏, 1=2屏, 2=3屏, 3=4屏
 
     def compose(self) -> ComposeResult:
         with Container(classes="header"):
@@ -367,6 +443,8 @@ class Launcher(App):
             yield ListView(id="model-list")
         with Horizontal(classes="buttons"):
             yield Button("启动", variant="success", id="launch")
+            yield Button("本窗口", id="toggle-window", classes="mode-btn")
+            yield Button("1屏", id="toggle-panes", classes="pane-btn")
             yield Button("更新", id="update-btn", disabled=True)
             yield Button("添加", variant="primary", id="add")
             yield Button("编辑", id="edit")
@@ -374,7 +452,7 @@ class Launcher(App):
             yield Button("还原", id="restore")
             yield Button("跳过权限: 关", id="toggle-skip", classes="toggle-btn off")
             yield Button("退出", id="quit")
-        yield Label("选择模型后按 Enter 启动 | R 还原配置 | S 跳过权限", classes="status", id="status")
+        yield Label("Enter 启动 | W 窗口 | P 分屏 | R 还原 | S 跳过权限", classes="status", id="status")
         yield Label("↑↓ 选择模型 | 在 Windows Terminal 标签页中打开", classes="info")
 
     def on_mount(self):
@@ -450,6 +528,8 @@ class Launcher(App):
     def on_button_pressed(self, e):
         actions = {
             "launch": self.action_launch,
+            "toggle-window": self.action_toggle_window,
+            "toggle-panes": self.action_toggle_panes,
             "add": self.action_add,
             "edit": self.action_edit,
             "delete": self.action_delete,
@@ -475,12 +555,32 @@ class Launcher(App):
         lst = self.query_one("#model-list")
         if lst.highlighted_child and hasattr(lst.highlighted_child, "model"):
             model = lst.highlighted_child.model
-            success = launch_in_wt(model, self.skip_permissions)
+            window_mode = self.WINDOW_MODES[self.window_mode_index]["id"]
+            pane_count = self.PANE_COUNTS[self.pane_count_index]["id"]
+            success = launch_in_wt(model, self.skip_permissions, window_mode, pane_count)
             if success:
                 mode = " (跳过权限)" if self.skip_permissions else ""
-                self.query_one("#status").update(f"[green]已启动: {model['name']}{mode} | 使用完毕后按 R 还原配置[/]")
+                window_name = self.WINDOW_MODES[self.window_mode_index]["label"]
+                pane_name = self.PANE_COUNTS[self.pane_count_index]["label"]
+                self.query_one("#status").update(f"[green]已启动: {model['name']} [{window_name} {pane_name}]{mode}[/]")
             else:
                 self.query_one("#status").update(f"启动失败: {model['name']}")
+
+    def action_toggle_window(self):
+        """切换窗口模式"""
+        self.window_mode_index = (self.window_mode_index + 1) % len(self.WINDOW_MODES)
+        mode = self.WINDOW_MODES[self.window_mode_index]
+        btn = self.query_one("#toggle-window")
+        btn.label = mode["label"]
+        self.query_one("#status").update(f"窗口模式: {mode['label']}")
+
+    def action_toggle_panes(self):
+        """切换分屏数量"""
+        self.pane_count_index = (self.pane_count_index + 1) % len(self.PANE_COUNTS)
+        pane = self.PANE_COUNTS[self.pane_count_index]
+        btn = self.query_one("#toggle-panes")
+        btn.label = pane["label"]
+        self.query_one("#status").update(f"分屏数量: {pane['label']}")
 
     def action_add(self):
         def cb(r):
